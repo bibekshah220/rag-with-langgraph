@@ -30,6 +30,44 @@ While traditional LLM chains (like standard LangChain LCEL) are linear Directed 
 
 ---
 
+## 1.1 The LangGraph Mental Model: The Central Blackboard
+
+To intuitively understand LangGraph, use the **Central Blackboard & Specialized Workers** mental model:
+
+```mermaid
+flowchart TD
+    classDef board fill:#fff9c4,stroke:#fbc02d,stroke-width:3px;
+    classDef worker fill:#e1f5fe,stroke:#0288d1,stroke-width:2px;
+    classDef router fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px;
+
+    BOARD[("SHARED BLACKBOARD (GRAPH STATE)<br/>{ messages: [...], documents: [...], step: 2 }")]:::board
+
+    WORKER1["Node 1: Retriever Worker<br/>Reads question -> Writes documents"]:::worker <-->|Read & Update State| BOARD
+    WORKER2["Node 2: Evaluator Worker<br/>Reads documents -> Writes is_relevant"]:::worker <-->|Read & Update State| BOARD
+    ROUTER["Conditional Edge Router<br/>Reads is_relevant -> Chooses next Worker"]:::router <-->|Inspect State| BOARD
+    WORKER3["Node 3: Generator Worker<br/>Reads documents -> Writes final response"]:::worker <-->|Read & Update State| BOARD
+```
+
+### The 4 Mental Pillars:
+
+1. **The Shared Blackboard (`State`)**:
+   - Imagine a blackboard in the middle of a room holding all current facts, messages, and variables.
+   - Nodes do not pass data directly to each other; they **read from** and **write updates to** this single shared blackboard.
+
+2. **Specialized Workers (`Nodes`)**:
+   - Each Node is an isolated worker with one job (e.g., *“I retrieve documents”*, *“I grade relevance”*, *“I generate text”*).
+   - Every worker receives the blackboard, does its job, and writes its result back.
+
+3. **Traffic Controllers (`Edges & Routers`)**:
+   - **Fixed Edges**: Direct instructions (*“After Worker 1 finishes, send the board to Worker 2”*).
+   - **Conditional Routers**: Traffic guards that look at the blackboard state (*“If `is_relevant == True`, route to Worker 3; else route to Query Rewriter”*).
+
+4. **Snapshot Camera (`Checkpointer / Memory`)**:
+   - After every worker finishes, LangGraph takes a snapshot photo of the blackboard.
+   - This allows pausing execution for human review, rewinding time, or resuming multi-turn chat sessions seamlessly.
+
+---
+
 ## 2. Core Concepts & Building Blocks
 
 > [!IMPORTANT]
