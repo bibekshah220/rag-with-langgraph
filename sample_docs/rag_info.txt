@@ -1,0 +1,8 @@
+Retrieval-Augmented Generation (RAG) Fundamentals
+
+Retrieval-Augmented Generation (RAG) enhances Large Language Models by retrieving relevant document passages from an external vector store before generating an answer.
+
+Workflow:
+1. Indexing: Load text -> Chunk -> Generate dense vector embeddings -> Store in FAISS / Chroma.
+2. Retrieval: Similarity search using Cosine Similarity to find top-K context chunks.
+3. Generation: Pass query + retrieved context chunks to LLM to synthesize factually grounded answer.

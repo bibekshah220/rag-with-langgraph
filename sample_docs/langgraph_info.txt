@@ -1,0 +1,10 @@
+LangGraph Overview and Architecture
+
+LangGraph is a library built on top of LangChain for building stateful, multi-actor applications with LLMs. It models agent workflows as directed graphs where nodes are functions (such as an LLM call, a tool invocation, or data processing step) and edges dictate the flow of execution control.
+
+Key Features of LangGraph:
+1. Graph-based workflow: Model agent logic as nodes and edges.
+2. Stateful execution: Shared state dictionary passed across nodes and updated incrementally.
+3. Cycles & branching: Supports loops (ReAct pattern) and conditional routing.
+4. Persistent state: Built-in checkpointers allow saving state to disk or database to pause and resume agent execution.
+5. Tool integration: Seamlessly binds external tools and function calls.
