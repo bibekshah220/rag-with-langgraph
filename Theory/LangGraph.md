@@ -57,18 +57,67 @@ LangGraph natively saves state snapshots at every step. This unlocks:
 
 ---
 
-## 3. LangGraph Architecture Diagram
+## 3. LangGraph Workflow Diagrams
+
+### 3.1 Agentic RAG State Machine Workflow Diagram
 
 ```mermaid
 flowchart TD
-    START([START]) --> RetrieveNode[Retrieve Documents Node]
-    RetrieveNode --> GradeNode{Grade Documents Node}
+    classDef startend fill:#ffe0b2,stroke:#f57c00,stroke-width:2px;
+    classDef nodeStyle fill:#e1f5fe,stroke:#0288d1,stroke-width:2px;
+    classDef decision fill:#fff9c4,stroke:#fbc02d,stroke-width:2px;
+
+    START_NODE([START]):::startend --> RETRIEVE[Retrieve Documents Node]:::nodeStyle
+    RETRIEVE --> GRADE[Grade Documents Node]:::nodeStyle
     
-    GradeNode -->|Relevant| GenerateNode[Generate Answer Node]
-    GradeNode -->|Irrelevant / Poor Context| RewriteQueryNode[Rewrite Query Node]
+    GRADE --> ROUTE{Is Context Relevant?}:::decision
     
-    RewriteQueryNode --> RetrieveNode
-    GenerateNode --> END([END])
+    ROUTE -->|YES: Context Relevant| GENERATE[Generate Answer Node]:::nodeStyle
+    ROUTE -->|NO: Context Irrelevant| REWRITE[Rewrite Query Node]:::nodeStyle
+    
+    REWRITE -->|Update State Query| RETRIEVE
+    GENERATE --> END_NODE([END]):::startend
+```
+
+---
+
+### 3.2 Self-RAG Self-Correction Workflow Diagram
+
+```mermaid
+flowchart TD
+    classDef step fill:#e8eaf6,stroke:#3f51b5,stroke-width:2px;
+    classDef check fill:#fff3e0,stroke:#e65100,stroke-width:2px;
+
+    Q[User Input Query]:::step --> RET[Retrieve Chunks]:::step
+    RET --> EVAL_DOCS{Grade Chunk Relevance}:::check
+    
+    EVAL_DOCS -->|Relevant| GEN[LLM Generation]:::step
+    EVAL_DOCS -->|Irrelevant| REWRITE_Q[Rewrite Query]:::step --> RET
+    
+    GEN --> EVAL_HALLUCINATION{Check Hallucination}:::check
+    
+    EVAL_HALLUCINATION -->|Factually Grounded| FINAL[Output Answer]:::step
+    EVAL_HALLUCINATION -->|Hallucination Detected| RE_GEN[Re-Generate Answer]:::step --> EVAL_HALLUCINATION
+```
+
+---
+
+### 3.3 Corrective RAG (CRAG) Fallback Workflow Diagram
+
+```mermaid
+flowchart TD
+    classDef node fill:#e1f5fe,stroke:#0288d1,stroke-width:2px;
+    classDef router fill:#fff9c4,stroke:#fbc02d,stroke-width:2px;
+
+    Q[User Query]:::node --> VEC_SEARCH[Vector Database Search]:::node
+    VEC_SEARCH --> EVAL_CONF{Evaluate Score Confidence}:::router
+    
+    EVAL_CONF -->|High Relevance| LOCAL_CTX[Use Vector Store Chunks]:::node
+    EVAL_CONF -->|Low Relevance / Missing| WEB_SEARCH[Fallback Web Search API]:::node
+    
+    LOCAL_CTX --> LLM_GEN[LLM Synthesis]:::node
+    WEB_SEARCH --> LLM_GEN
+    LLM_GEN --> OUTPUT[Final Response]:::node
 ```
 
 ---
@@ -234,3 +283,70 @@ console.log(result.generation);
 | **Execution Control** | Fixed sequence | Dynamic conditional branching & re-execution |
 | **Human-in-the-Loop** | Difficult to interrupt / resume | Native checkpointers (`interrupt_before`, `interrupt_after`) |
 | **Multi-Agent Teams** | Complex custom code | Built-in Multi-Agent node collaboration graphs |
+
+---
+
+## 7. How LLMs are Used in LangGraph
+
+In a LangGraph application, LLMs fulfill 3 distinct roles:
+
+```mermaid
+flowchart TD
+    subgraph Roles ["Roles of LLMs in LangGraph"]
+        R1["1. Node Processor<br/>(Generate answers, summarize, draft code)"]
+        R2["2. Decision Router<br/>(Structured Output for Conditional Edges)"]
+        R3["3. Tool Caller<br/>(Emit JSON schema requests to ToolNode)"]
+    end
+```
+
+### 1. Supported LLM Providers & Initialization
+
+LangGraph supports any LLM that integrates with LangChain's `BaseChatModel` interface:
+
+```python
+# OpenAI
+from langchain_openai import ChatOpenAI
+llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
+
+# Anthropic Claude
+from langchain_anthropic import ChatAnthropic
+llm = ChatAnthropic(model="claude-3-5-sonnet-20240620", temperature=0)
+
+# Google Gemini
+from langchain_google_genai import ChatGoogleGenerativeAI
+llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0)
+
+# Open-Source Local Models (Ollama)
+from langchain_ollama import ChatOllama
+llm = ChatOllama(model="llama3.1", temperature=0)
+```
+
+### 2. Pattern A: LLM as Node Processor
+Inside a node, the LLM takes state context and updates state fields:
+```python
+def generate_node(state: State):
+    # LLM processes state and synthesizes output
+    response = llm.invoke(state["messages"])
+    return {"messages": [response]}
+```
+
+### 3. Pattern B: LLM as Conditional Router (Structured Output)
+Using `.with_structured_output(PydanticSchema)`, the LLM returns a strict JSON object used by conditional edges to route execution:
+```python
+from pydantic import BaseModel, Field
+
+class GradeDocuments(BaseModel):
+    binary_score: str = Field(description="Documents are relevant to the question, 'yes' or 'no'")
+
+structured_llm_grader = llm.with_structured_output(GradeDocuments)
+
+def grade_node(state: State):
+    score = structured_llm_grader.invoke(...)
+    return {"is_relevant": score.binary_score == "yes"}
+```
+
+### 4. Pattern C: LLM as Autonomous Tool Caller
+Using `.bind_tools(tools)`, the LLM automatically emits tool call requests that LangGraph routes to the prebuilt `ToolNode`:
+```python
+llm_with_tools = llm.bind_tools([calculator_tool, web_search_tool])
+```
