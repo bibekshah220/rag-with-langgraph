@@ -10,6 +10,16 @@ if str(src_dir) not in sys.path:
     sys.path.insert(0, str(src_dir))
 
 import streamlit as st
+
+# Load Streamlit Cloud secrets into environment variables
+# (must happen BEFORE importing agent, which initializes ChatGroq at module level)
+try:
+    for key, value in st.secrets.items():
+        if isinstance(value, str):
+            os.environ.setdefault(key, value)
+except Exception:
+    pass  # Not on Streamlit Cloud, .env will be used instead
+
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from rag_with_langgraph.agent import (
     DOCS_DIR,
